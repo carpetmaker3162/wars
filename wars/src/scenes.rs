@@ -169,6 +169,9 @@ struct GameScene {
 
     player_texture: f32,
     player_position: f32,
+    player_y_position: f32,
+    player_y_speed: f32,
+    gravity: f32,
 
     enemy_texture: f32,
     enemies: Vec<Enemy>,
@@ -211,6 +214,9 @@ impl GameScene {
             ],
             window,
             player_position: 200.0,
+            player_y_position: 370.0,
+            player_y_speed: 200.0,
+            gravity: 0.0,
             is_hard_mode,
         }
     }
@@ -219,12 +225,26 @@ impl GameScene {
 impl Scene for GameScene {
     fn update(&mut self, delta_time: f64) -> Option<Box<dyn Scene>> {
         const PLAYER_SPEED: f32 = 200.0;
+        const GRAVITY_CONSTANT: f32 = 5.0;
+        self.gravity += GRAVITY_CONSTANT * (delta_time as f32);
 
-        if self.window.borrow().is_key_down(glfw::Key::Left) {
+        if self.player_y_position < 370.0 {
+            self.player_y_position += self.gravity;
+        } else {
+            self.gravity = 0.0;
+        }
+        
+        if self.window.borrow().is_key_down(glfw::Key::Left)
+        || self.window.borrow().is_key_down(glfw::Key::A) {
             self.player_position -= PLAYER_SPEED * (delta_time as f32);
         }
-        if self.window.borrow().is_key_down(glfw::Key::Right) {
+        if self.window.borrow().is_key_down(glfw::Key::Right)
+        || self.window.borrow().is_key_down(glfw::Key::D) {
             self.player_position += PLAYER_SPEED * (delta_time as f32);
+        }
+        if self.window.borrow().is_key_down(glfw::Key::Up)
+        || self.window.borrow().is_key_down(glfw::Key::W) {
+            self.player_y_position -= PLAYER_SPEED * (delta_time as f32);
         }
         if self.window.borrow().is_key_down(glfw::Key::Escape) {
             return Some(Box::new(MenuScene::new(self.window.clone())));
@@ -240,7 +260,8 @@ impl Scene for GameScene {
             }
         } else {
             if let Some(nearest_enemy) = self.enemies.last() {
-                if (nearest_enemy.x_position - self.player_position).abs() < 150.0 {
+                if (nearest_enemy.x_position - self.player_position).abs() < 150.0
+                && (370.0 - self.player_y_position).abs() < 150.0 {
                     self.enemies.pop();
 
                     if self.enemies.is_empty() {
@@ -278,7 +299,7 @@ impl Scene for GameScene {
         self.renderer.draw_quad(
             &Vector2 {
                 x: self.player_position,
-                y: 370.0,
+                y: self.player_y_position,
             },
             &Vector2 { x: 150.0, y: 150.0 },
             &Vector4 {
