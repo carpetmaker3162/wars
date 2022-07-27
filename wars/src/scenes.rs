@@ -5,6 +5,8 @@ use crate::{
     math::{Vector2, Vector4},
     ui::ButtonChecker,
     Scene, Window,
+    physics::AABCollider,
+    physics::Collision,
 };
 use rand::{distributions::Uniform, Rng};
 
@@ -161,6 +163,13 @@ impl Scene for MenuScene {
 
 struct Enemy {
     x_position: f32,
+    collider: AABCollider,
+}
+
+struct Wall {
+    x: f32,
+    y: f32,
+    collider: AABCollider,
 }
 
 struct GameScene {
@@ -168,13 +177,16 @@ struct GameScene {
     window: Rc<RefCell<Window>>,
 
     player_texture: f32,
-    player_position: f32,
+    player_x_position: f32,
     player_y_position: f32,
     player_y_speed: f32,
+    player_collider: AABCollider,
     gravity: f32,
 
     enemy_texture: f32,
     enemies: Vec<Enemy>,
+
+    walls: Vec<Wall>,
 
     is_hard_mode: bool,
 }
@@ -182,7 +194,7 @@ struct GameScene {
 impl GameScene {
     fn new(window: Rc<RefCell<Window>>, is_hard_mode: bool) -> GameScene {
         let mut renderer = Renderer2D::new(
-            5,
+            20,
             "assets/shaders/2d_renderer_basic.vs",
             "assets/shaders/2d_renderer_basic.fs",
         );
@@ -207,13 +219,17 @@ impl GameScene {
             renderer,
             player_texture,
             enemy_texture,
+            player_collider: AABCollider::new(200.0, 370.0, 150.0, 150.0),
             enemies: vec![
-                Enemy { x_position: 1000.0 },
-                Enemy { x_position: 800.0 },
-                Enemy { x_position: 600.0 },
+                Enemy { x_position: 1000.0, collider: AABCollider::new(1000.0, 370.0, 150.0, 150.0) },
+                Enemy { x_position: 800.0, collider: AABCollider::new(800.0, 370.0, 150.0, 150.0) },
+                Enemy { x_position: 600.0, collider: AABCollider::new(600.0, 370.0, 150.0, 150.0) },
+            ],
+            walls: vec![
+                Wall { x: 350.0, y: 400.0, collider: AABCollider::new(350.0, 400.0, 150.0, 150.0) }
             ],
             window,
-            player_position: 200.0,
+            player_x_position: 200.0,
             player_y_position: 370.0,
             player_y_speed: 200.0,
             gravity: 0.0,
@@ -227,25 +243,35 @@ impl Scene for GameScene {
         const PLAYER_SPEED: f32 = 200.0;
         const GRAVITY_CONSTANT: f32 = 5.0;
         self.gravity += GRAVITY_CONSTANT * (delta_time as f32);
-
+        
         if self.player_y_position < 370.0 {
             self.player_y_position += self.gravity;
         } else {
             self.gravity = 0.0;
         }
         
-        if self.window.borrow().is_key_down(glfw::Key::Left)
-        || self.window.borrow().is_key_down(glfw::Key::A) {
-            self.player_position -= PLAYER_SPEED * (delta_time as f32);
-        }
-        if self.window.borrow().is_key_down(glfw::Key::Right)
-        || self.window.borrow().is_key_down(glfw::Key::D) {
-            self.player_position += PLAYER_SPEED * (delta_time as f32);
-        }
-        if self.window.borrow().is_key_down(glfw::Key::Up)
-        || self.window.borrow().is_key_down(glfw::Key::W) {
-            self.player_y_position -= PLAYER_SPEED * (delta_time as f32);
-        }
+        self.walls.iter().for_each(|wall| {
+            let result = wall.collider.get_collision_with_aabc(&self.player_collider);
+
+            if (self.window.borrow().is_key_down(glfw::Key::Left)
+            || self.window.borrow().is_key_down(glfw::Key::A))
+            && !(result.left) {
+                self.player_x_position -= PLAYER_SPEED * (delta_time as f32);
+            }
+            if (self.window.borrow().is_key_down(glfw::Key::Right)
+            || self.window.borrow().is_key_down(glfw::Key::D) )
+            && !(result.right) {
+                self.player_x_position += PLAYER_SPEED * (delta_time as f32);
+            }
+            if (self.window.borrow().is_key_down(glfw::Key::Up)
+            || self.window.borrow().is_key_down(glfw::Key::W) )
+            && !(result.top) {
+                self.player_y_position -= PLAYER_SPEED * (delta_time as f32);
+            }
+        });
+        
+        self.player_collider.move_collider(self.player_x_position as f64, self.player_y_position as f64);
+
         if self.window.borrow().is_key_down(glfw::Key::Escape) {
             return Some(Box::new(MenuScene::new(self.window.clone())));
         }
@@ -255,12 +281,12 @@ impl Scene for GameScene {
                 enemy.x_position -= (50.0f64 * delta_time) as f32;
             });
 
-            if (self.enemies[2].x_position - self.player_position).abs() < 150.0 {
+            if (self.enemies[2].x_position - self.player_x_position).abs() < 150.0 {
                 return Some(Box::new(MenuScene::new(self.window.clone())));
             }
         } else {
             if let Some(nearest_enemy) = self.enemies.last() {
-                if (nearest_enemy.x_position - self.player_position).abs() < 150.0
+                if (nearest_enemy.x_position - self.player_x_position).abs() < 150.0
                 && (370.0 - self.player_y_position).abs() < 150.0 {
                     self.enemies.pop();
 
@@ -298,7 +324,7 @@ impl Scene for GameScene {
 
         self.renderer.draw_quad(
             &Vector2 {
-                x: self.player_position,
+                x: self.player_x_position,
                 y: self.player_y_position,
             },
             &Vector2 { x: 150.0, y: 150.0 },
@@ -326,6 +352,15 @@ impl Scene for GameScene {
                 },
                 self.enemy_texture,
             );
+        });
+        
+        self.walls.iter().for_each(|wall| {
+            self.renderer.draw_quad(
+                &Vector2 { x: wall.x, y: wall.y },
+                &Vector2 { x: 150.0, y: 150.0 },
+                &Vector4 { x: 1.0, y: 1.0, z: 1.0, w: 1.0 },
+                -1.0,
+            )
         });
 
         self.renderer.end();

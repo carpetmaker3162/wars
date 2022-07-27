@@ -3,10 +3,10 @@
 /// rection. For example, if `left` is true, it means that the target objects  
 /// is intersecting with the other object at it's left side.
 pub struct Collision {
-    left: bool,
-    right: bool,
-    top: bool,
-    bottom: bool,
+    pub left: bool,
+    pub right: bool,
+    pub top: bool,
+    pub bottom: bool,
 }
 
 pub struct AABCollider {
@@ -58,6 +58,6 @@ impl AABCollider {
             result.bottom = true;
         }
 
-        result
+        return result;
     }
 }
